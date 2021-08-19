@@ -6,6 +6,8 @@
 
 verbose=:
 prune=no
+compress=no
+extension=""
 
 while test $# -gt 0; do
     case $1 in
@@ -16,6 +18,11 @@ while test $# -gt 0; do
 
         -P | --prune)
             prune=yes
+            shift
+            ;;
+        -C | --compress)
+            compress=yes
+            extension=".xz"
             shift
             ;;
 
@@ -33,41 +40,33 @@ done
 
 grep '^File:' WHENCE | sed -e's/^File: *//g' -e's/"//g' | while read f; do
     test -f "$f" || continue
-    $verbose "copying file $f"
-    mkdir -p $destdir/$(dirname "$f")
-    cp -d "$f" $destdir/"$f"
-done
+    mkdir -p "$destdir/$(dirname "$f")"
 
-grep -E '^Link:' WHENCE | sed -e's/^Link: *//g' -e's/-> //g' | while read f d; do
-    if test -L "$f"; then
-        test -f "$destdir/$f" && continue
-        $verbose "copying link $f"
-        mkdir -p $destdir/$(dirname "$f")
-        cp -d "$f" $destdir/"$f"
-
-        if test "x$d" != "x"; then
-            target=`readlink "$f"`
-
-            if test "x$target" != "x$d"; then
-                $verbose "WARNING: inconsistent symlink target: $target != $d"
-            else
-                if test "x$prune" != "xyes"; then
-                    $verbose "WARNING: unneeded symlink detected: $f"
-                else
-                    $verbose "WARNING: pruning unneeded symlink $f"
-                    rm -f "$f"
-                fi
-            fi
-        else
-            $verbose "WARNING: missing target for symlink $f"
-        fi
+    if test "$compress" == yes; then
+        $verbose "compressing file $f"
+        xz --check crc32 --stdout "$f" > "$destdir/$f$extension"
     else
-        $verbose "creating link $f -> $d"
-        mkdir -p $destdir/$(dirname "$f")
-        ln -sf "$d" "$destdir/$f"
+        $verbose "copying file $f"
+        cp -d "$f" "$destdir/$f"
     fi
 done
 
-exit 0
+grep -E '^Link:' WHENCE | sed -e's/^Link: *//g' -e's/-> //g' | while read f d; do
 
+    if test -L "$f"; then
+        $verbose "WARNING: link already exists: $f"
+        
+        target=$(readlink "$f")
+        if test "$target" != "$d"; then
+            $verbose "WARNING: inconsistent link target: $f/$target/$target"
+        fi
+    fi
+
+    mkdir -p "$destdir/$(dirname "$f")"
+    $verbose "creating link $f$extension -> $d$extension"
+    ln -sf "$d$extension" "$destdir/$f$extension"
+
+done
+
+exit 0
 # vim: et sw=4 sts=4 ts=4
